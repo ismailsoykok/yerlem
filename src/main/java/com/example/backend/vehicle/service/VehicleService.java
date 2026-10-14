@@ -28,6 +28,7 @@ public class VehicleService {
 
         return vehicles.stream()
                 .map(vehicle -> new VehicleResponse(
+                        vehicle.getId(),
                         vehicle.getMake(),
                         vehicle.getModel(),
                         vehicle.getRemainingRangeKm(),
