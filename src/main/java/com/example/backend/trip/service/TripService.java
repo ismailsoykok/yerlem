@@ -210,7 +210,7 @@ public class TripService {
             );
         }
 
-        // 1. Giriş yapmış kullanıcıyı bul.
+        // önce giriş yapan kullanıcıyı buluyoruz
         UUID userId = currentUserService.getUserId();
 
         User user = userRepository.findById(userId)
@@ -219,7 +219,7 @@ public class TripService {
                         "Kullanıcı bulunamadı."
                 ));
 
-        // 2. Kullanıcının aktif ve telefonunun doğrulanmış olduğunu kontrol et.
+        // kullanıcı aktif mi ve telefonu onaylı mı diye bakıyoruz
         if (user.getStatus() != UserStatus.ACTIVE
                 || !user.isPhoneVerified()) {
             throw new ResponseStatusException(
@@ -228,7 +228,7 @@ public class TripService {
             );
         }
 
-        // 3. Aracı kilitli şekilde getir.
+        // aracı kilitli çekiyoruz ki aynı anda başkası alamasın
         Vehicle vehicle = vehicleRepository
                 .findByIdForUpdate(request.getVehicleId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -243,7 +243,7 @@ public class TripService {
             );
         }
 
-        // 4. Ücreti istemciden kabul etme; sunucuda yeniden hesapla.
+        // client'tan gelen ücrete güvenmeyip sunucuda tekrar hesaplıyoruz
         TripEstimateRequest estimateRequest = new TripEstimateRequest();
         estimateRequest.setVehicleId(request.getVehicleId());
         estimateRequest.setDestinationCity(request.getDestinationCity());
@@ -256,7 +256,7 @@ public class TripService {
 
         TripEstimateResponse estimate = estimateTrip(estimateRequest);
 
-        // 5. Tahmini ücret kadar bakiye olup olmadığını kontrol et.
+        // tahmini ücret için yeterli bakiye var mı diye kontrol ediyoruz
 
         walletService.checkSufficientBalance(
                 userId,
@@ -270,7 +270,7 @@ public class TripService {
                         "Aktif ücret tarifesi bulunamadı."
                 ));
 
-        // 6. Seyahat kaydını oluştur.
+        // seyahat kaydını oluşturuyoruz
         LocalDateTime startedAt = LocalDateTime.now();
 
         Trip trip = new Trip();
@@ -291,7 +291,7 @@ public class TripService {
 
         trip = tripRepository.save(trip);
 
-        // 7. Seyahatin ücret hesaplamasını ayrı tabloda sakla.
+        // seyahatin ücret detaylarını ayrı tabloda tutuyoruz
         TripFare tripFare = new TripFare();
         tripFare.setTrip(trip);
         tripFare.setCityFare(cityFare);
@@ -303,11 +303,11 @@ public class TripService {
 
         tripFareRepository.save(tripFare);
 
-        // 8. Aracı kullanımda olarak işaretle.
+        // aracı artık kullanımda olarak işaretliyoruz
         vehicle.setStatus(VehicleStatus.IN_USE);
         vehicleRepository.save(vehicle);
 
-        // 9. İstemciye seyahat bilgisini döndür.
+        // seyahat bilgilerini istemciye dönüyoruz
         return new TripCreateResponse(
                 trip.getId(),
                 trip.getStatus().name(),
@@ -325,7 +325,7 @@ public class TripService {
             UUID tripId,
             TripLocationRequest request) {
 
-        // 1. İstek ve koordinatları doğrula.
+        // gelen isteği ve koordinatları doğruluyoruz
         if (request == null
                 || request.getLatitude() == null
                 || request.getLongitude() == null) {
@@ -357,17 +357,17 @@ public class TripService {
             );
         }
 
-        // 2. Giriş yapan kullanıcıyı belirle.
+        // giriş yapan kullanıcıyı alıyoruz
         UUID userId = currentUserService.getUserId();
 
-        // 3. Seyahati bul.
+        // seyahat kaydını buluyoruz
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Seyahat bulunamadı."
                 ));
 
-        // 4. Seyahatin kullanıcıya ait olduğunu kontrol et.
+        // bu seyahat gerçekten bu kullanıcıya mı ait ona bakıyoruz
         if (!trip.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
@@ -375,7 +375,7 @@ public class TripService {
             );
         }
 
-        // 5. Seyahatin devam ettiğini kontrol et.
+        // seyahat hala devam ediyor mu diye kontrol ediyoruz
         if (trip.getStatus() != TripStatus.IN_PROGRESS) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -383,7 +383,7 @@ public class TripService {
             );
         }
 
-        // 6. Konumu kaydet.
+        // yeni konumu kaydediyoruz
         TripLocation location = new TripLocation();
         location.setTrip(trip);
         location.setLatitude(latitude);
@@ -397,12 +397,12 @@ public class TripService {
 
         tripLocationRepository.saveAndFlush(location);
 
-        // 7. Hız sınırını kontrol et.
+        // hız sınırını aşıp aşmadığına bakıyoruz
         if (speedKmh != null && request.getCityName() != null) {
 
             String cityName = request.getCityName().trim();
 
-            // Başlangıç şehriyle aynıysa şehir içi kabul et.
+            // başlangıç şehriyle aynı yerdeyse şehir içi sayıyoruz
             boolean inCity = cityName.equalsIgnoreCase(
                     trip.getOriginCity()
             );
@@ -427,7 +427,7 @@ public class TripService {
             }
         }
 
-        // 8. Kalan menzili kontrol et.
+        // kalan menzili kontrol ediyoruz
         BigDecimal actualDistanceKm =
                 postgisTripDistanceRepository
                         .calculateActualDistanceKm(trip.getId());
@@ -440,7 +440,7 @@ public class TripService {
             BigDecimal estimatedRemainingRange =
                     remainingRangeKm.subtract(actualDistanceKm);
 
-            // Kalan menzil 1 km'nin altına düştüyse yolculuğu bitir.
+            // menzil 1 km altına düşerse yolculuğu direkt bitiriyoruz
             if (estimatedRemainingRange.compareTo(BigDecimal.ONE) < 0) {
 
                 TripCompleteRequest completeRequest =
@@ -463,7 +463,7 @@ public class TripService {
             UUID tripId,
             TripCompleteRequest request
     ) {
-        // 1. İstek ve koordinat kontrolleri
+        // gelen istek ve son koordinatları kontrol ediyoruz
         if (request == null
                 || request.getLatitude() == null
                 || request.getLongitude() == null) {
@@ -491,19 +491,17 @@ public class TripService {
             );
         }
 
-        // 2. JWT üzerinden mevcut kullanıcıyı al
+        // jwt üzerinden aktif kullanıcıyı alıyoruz
         UUID userId = currentUserService.getUserId();
 
-        // 3. Seyahati kilitleyerek getir.
-        // Aynı seyahat için eşzamanlı tamamlama isteklerinin
-        // ikinci kez işlem yapmasını engeller.
+        // seyahati kilitli getiriyoruz ki aynı anda iki defa bitirme isteği gelirse çakışmasın
         Trip trip = tripRepository.findByIdForUpdate(tripId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Seyahat bulunamadı."
                 ));
 
-        // 4. Seyahatin bu kullanıcıya ait olduğunu doğrula
+        // seyahatin bu kullanıcıya ait olup olmadığını kontrol ediyoruz
         if (!trip.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
@@ -511,7 +509,7 @@ public class TripService {
             );
         }
 
-        // 5. Yalnızca devam eden seyahat tamamlanabilir
+        // sadece devam eden seyahatler bitirilebilir o yüzden durumuna bakıyoruz
         if (trip.getStatus() != TripStatus.IN_PROGRESS) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -535,7 +533,7 @@ public class TripService {
             );
         }
 
-        // 6. Son konumu seyahat zaman çizelgesine kaydet
+        // son konumu da zaman çizelgesine ekliyoruz
         TripLocation finalLocation = new TripLocation();
         finalLocation.setTrip(trip);
         finalLocation.setLatitude(request.getLatitude());
@@ -550,7 +548,7 @@ public class TripService {
 
         tripLocationRepository.saveAndFlush(finalLocation);
 
-        // 7. Hız sınırını kontrol et ve gerekiyorsa uyarı oluştur
+        // hız sınırını aştıysa hemen uyarı kaydı oluşturuyoruz
         if (request.getSpeedKmh() != null) {
             boolean isSameCity = request.getCityName() != null
                     && trip.getOriginCity() != null
@@ -574,7 +572,7 @@ public class TripService {
             }
         }
 
-        // 8. Konum kayıtlarından gerçek mesafeyi hesapla
+        // konum kayıtları üstünden gidilen gerçek mesafeyi hesaplıyoruz
         BigDecimal actualDistanceKm =
                 postgisTripDistanceRepository
                         .calculateActualDistanceKm(trip.getId());
@@ -592,7 +590,7 @@ public class TripService {
                 RoundingMode.HALF_UP
         );
 
-        // 9. Gerçek seyahat süresini hesapla
+        // seyahatin toplam kaç dakika sürdüğünü hesaplıyoruz
         long durationMinutes = Duration.between(
                 trip.getStartedAt(),
                 completedAt
@@ -600,8 +598,7 @@ public class TripService {
 
         int actualDurationMinutes = Math.toIntExact(durationMinutes);
 
-        // 10. Tahmini süreyle gerçekleşen süreyi karşılaştır.
-        // Tolerans: tahmini sürenin %20 fazlası.
+        // tahmini süreyle gerçek süreyi kıyaslıyoruz yüzde yirmiyi geçerse uyarı atacağız
         Integer estimatedDuration = trip.getEstimatedDurationMinutes();
 
         if (estimatedDuration != null && estimatedDuration > 0) {
@@ -626,7 +623,7 @@ public class TripService {
             }
         }
 
-        // 11. Seyahat ücretini kontrol et
+        // seyahat ücret kaydını kontrol ediyoruz
         TripFare tripFare = tripFareRepository.findByTripId(trip.getId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNPROCESSABLE_ENTITY,
@@ -648,29 +645,26 @@ public class TripService {
             );
         }
 
-        // 12. Gerçek mesafeye göre nihai ücreti hesapla.
-        // Başlangıçta kaydedilen şehir tarifesi kullanılır.
+        // gidilen gerçek mesafeye göre başlangıçtaki tarifeden son ücreti hesaplıyoruz
         BigDecimal finalAmount = actualDistanceKm
                 .multiply(tripFare.getPricePerKm())
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // Mevcut ücret kaydını güncelle; ikinci bir TripFare oluşturma.
+        // yeni kayıt açmak yerine mevcut ücret kaydını güncelliyoruz
         tripFare.setDistanceKm(actualDistanceKm);
         tripFare.setTotalAmount(finalAmount);
         tripFare.setStatus(TripFareStatus.FINALIZED);
 
-        // 13. Tahsilat yap.
-        // Bu işlem aynı transaction içinde olmalı.
-        // Tahsilat başarısız olursa tamamlanma işlemleri de geri alınır.
+        // tahsilatı yapıyoruz işlem patlarsa rollback olsun diye aynı transaction içinde tutuyoruz
         walletService.chargeTrip(userId, trip, finalAmount);
 
-        // 14. Seyahat özetini güncelle
+        // seyahat bilgilerini ve durumunu tamamlandı olarak güncelliyoruz
         trip.setActualDistanceKm(actualDistanceKm);
         trip.setActualDurationMinutes(actualDurationMinutes);
         trip.setCompletedAt(completedAt);
         trip.setStatus(TripStatus.COMPLETED);
 
-        // 15. Aracın son konumunu ve menzil bilgilerini güncelle
+        // aracın son konumunu ve menzilini güncelliyoruz
         Vehicle vehicle = trip.getVehicle();
 
         vehicle.setCurrentLatitude(request.getLatitude());
@@ -682,7 +676,7 @@ public class TripService {
             vehicle.setCurrentCity(request.getCityName().trim());
         }
 
-        // İsteğin doğrultusunda toplam menzil değerini artır.
+        // toplam yapılan mesafeyi aracın kilometresine ekliyoruz
         if (vehicle.getTotalRangeKm() != null) {
             vehicle.setTotalRangeKm(
                     vehicle.getTotalRangeKm()
@@ -691,7 +685,7 @@ public class TripService {
             );
         }
 
-        // Kalan menzili gidilen mesafe kadar azalt.
+        // gittiği mesafe kadar kalan menzili düşürüyoruz
         if (vehicle.getRemainingRangeKm() != null) {
             BigDecimal remainingRange = vehicle.getRemainingRangeKm()
                     .subtract(actualDistanceKm);
@@ -702,18 +696,18 @@ public class TripService {
             );
         }
 
-        // Arıza nedeniyle bakımda olan araç bakımda kalmalı.
+        // araç zaten arıza yüzünden bakımdaysa durumunu bozmuyoruz
         if (vehicle.getStatus() != VehicleStatus.MAINTENANCE) {
             vehicle.setStatus(VehicleStatus.AVAILABLE);
         }
 
-        // 16. Değişiklikleri kaydet
+        // yapılan değişiklikleri veritabanına kaydediyoruz
         tripFareRepository.save(tripFare);
         tripRepository.save(trip);
         vehicleRepository.save(vehicle);
 
 
-        // 17. İstemciye kapsamlı seyahat özetini döndür
+        // son seyahat özetini kullanıcıya dönüyoruz
         TripCompleteResponse response = new TripCompleteResponse();
 
         response.setTripId(trip.getId());

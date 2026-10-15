@@ -1,0 +1,658 @@
+{
+  "info": {
+    "_postman_id": "fe631d9f-097e-4a37-ad5f-8f4a08149d0b",
+    "name": "Yerlem",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "52025387",
+    "_collection_link": "https://go.postman.co/collection/52025387-fe631d9f-097e-4a37-ad5f-8f4a08149d0b?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"fullName\": \"Mehmet Yılmaz\",\r\n  \"phone\": \"5321234562\",\r\n  \"password\": \"123456\",\r\n  \"identityNumber\": \"12345678903\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/users/register",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "users",
+            "register"
+          ]
+        },
+        "description": "Kullanıcı kaydı yapılan endpoint, örnek json:\n\n{  \"fullName\": \"Ahmet Yılmaz\",  \"phone\": \"5321234567\",  \"password\": \"Test1234\",  \"identityNumber\": \"12345678903\"}"
+      },
+      "response": []
+    },
+    {
+      "name": "Otp Verify",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"phone\": \"5321234562\",\r\n  \"code\": \"195850\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/users/verify-otp",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "users",
+            "verify-otp"
+          ]
+        },
+        "description": "OTP Doğrulama kodu endpointi, Kayıt işleminin ardından onaylanmalıdır. Örnek Yapı:\n\n{  \n\"phone\": \"5321234567\",  \n\"code\": \"123456\"  \n}"
+      },
+      "response": []
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "\r\nconst response = pm.response.json();\r\n\r\npm.environment.set(\"Bearer\", response.accessToken);\r\n\r\nconsole.log(\"Access token environment'a kaydedildi.\");\r\n"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n\"phone\": \"5550000002\",\r\n\"password\": \"123456789\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/users/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "users",
+            "login"
+          ]
+        },
+        "description": "Login Endpointi, Jwt oluşturulur ve 24 saat geçerlidir."
+      },
+      "response": []
+    },
+    {
+      "name": "Wallet TopUp- Payment",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"amount\": 150.00\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/wallet/top-up",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "wallet",
+            "top-up"
+          ]
+        },
+        "description": "Cüzdana para ekleme endpointi, User bilgileri jwt içinden çekilir test amaçlı olduğu için sadece amount değeri gönderilir."
+      },
+      "response": []
+    },
+    {
+      "name": "Vehicles",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8082/vehicles?status=AVAIBLE",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "vehicles"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "AVAIBLE"
+            }
+          ]
+        },
+        "description": "Arabaları listeleme endpointi, Status parametresi ile araçlar filtrelenebilir. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Estimate - Ankara",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"vehicleId\": \"a6ff9ea1-90a1-4d6f-9bf1-d8b8b6c40dee\",\r\n  \"destinationCity\": \"Ankara\",\r\n  \"destinationLatitude\": 40.02,\r\n  \"destinationLongitude\": 30.0600\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/estimate",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "estimate"
+          ]
+        },
+        "description": "Yolculuk tahmin endpointi, Ankara için bodysi doldurulmuş biçimde. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Estimate - İzmir",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"vehicleId\": \"2615e229-1eb5-447b-a2ef-d07be3ae8228\",\r\n  \"destinationCity\": \"Izmir\",\r\n  \"destinationLatitude\": 38.4208,\r\n  \"destinationLongitude\": 27.1541\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/estimate",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "estimate"
+          ]
+        },
+        "description": "Yolculuk tahmin endpointi, İzmir için bodysi doldurulmuş biçimde. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Estimate - İstanbul",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"vehicleId\": \"714c265d-ff6a-423a-81b3-2b38bf0c1c5e\",\r\n  \"destinationCity\": \"Istanbul\",\r\n  \"destinationLatitude\": 41.0082,\r\n  \"destinationLongitude\": 30.9784\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/estimate",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "estimate"
+          ]
+        },
+        "description": "Yolculuk tahmin endpointi, İstanbul için bodysi doldurulmuş biçimde. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Start Trip",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const response = pm.response.json();\r\npm.environment.set(\"tripID\", response.tripId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"vehicleId\": \"714c265d-ff6a-423a-81b3-2b38bf0c1c5e\",\r\n  \"destinationCity\": \"Istanbul\",\r\n  \"destinationLatitude\": 41.0082,\r\n  \"destinationLongitude\": 28.9984\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips"
+          ]
+        },
+        "description": "Yolculuk başlatma endpointi, jwt gönderilmeden endpoint isteği kabul etmez. Burdaki responsedan tripID alınıp location ekleme işlemi ve trip sonlandırma işlemi yapılmalı."
+      },
+      "response": []
+    },
+    {
+      "name": "Start Trip - Ankara",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const response = pm.response.json();\r\npm.environment.set(\"tripID\", response.tripId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"vehicleId\": \"a6ff9ea1-90a1-4d6f-9bf1-d8b8b6c40dee\",\r\n  \"destinationCity\": \"Ankara\",\r\n  \"destinationLatitude\": 40.02,\r\n  \"destinationLongitude\": 30.0600\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Trip Locations",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "\r\n{\r\n  \"latitude\": 40.0025,\r\n  \"longitude\": 29.099805,\r\n  \"cityName\": \"Istanbul\",\r\n  \"speedKmh\": 70\r\n}\r\n    ",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/{{tripID}}/locations",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "{{tripID}}",
+            "locations"
+          ]
+        },
+        "description": "Yolculuk sırasında anlık konum ve hız bilgilerinin gönderileceği endpoint. Anlık olarak arabanın kalan kmsini kontrol eder son 1 kmde yolculuğu otomatik sonlandırır. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Complete Trip",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"latitude\": 40.0255,\r\n  \"longitude\": 30.0663,\r\n  \"cityName\": \"Ankara\",\r\n  \"speedKmh\": 0\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/e5a5d4e9-d31e-49e8-a708-89c260bb338b/complete",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "e5a5d4e9-d31e-49e8-a708-89c260bb338b",
+            "complete"
+          ]
+        },
+        "description": "Aracın son konumu ve hızı gönderilir, path variable ile trip Id çekilir. Jwt ile user bilgilerine erişilir. Arka planda sistem eklenen lokasyonlar arasındaki yolu hesaplar ve en başta tahmini hesaplanan ücret yerine bunu tahsil eder. Yapılan km arabanın remaining km'sinden düşülür ve toplama eklenir."
+      },
+      "response": [
+        {
+          "name": "SONUÇ RESPONSE",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"latitude\": 39.9255,\r\n  \"longitude\": 32.8663,\r\n  \"cityName\": \"Ankara\",\r\n  \"speedKmh\": 0\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/trips/8ae71dae-cb9d-4075-a78a-26498f7cc9fb/complete",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "trips",
+                "8ae71dae-cb9d-4075-a78a-26498f7cc9fb",
+                "complete"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "key": "x-xss-protection",
+              "value": "0"
+            },
+            {
+              "key": "cache-control",
+              "value": "no-cache, no-store, max-age=0, must-revalidate"
+            },
+            {
+              "key": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "key": "expires",
+              "value": "0"
+            },
+            {
+              "key": "x-frame-options",
+              "value": "DENY"
+            },
+            {
+              "key": "content-type",
+              "value": "application/json"
+            },
+            {
+              "key": "transfer-encoding",
+              "value": "chunked"
+            },
+            {
+              "key": "date",
+              "value": "Thu, 15 Oct 2026 14:46:44 GMT"
+            },
+            {
+              "key": "keep-alive",
+              "value": "timeout=60"
+            },
+            {
+              "key": "connection",
+              "value": "keep-alive"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"tripId\": \"8ae71dae-cb9d-4075-a78a-26498f7cc9fb\",\n  \"status\": \"COMPLETED\",\n  \"originCity\": \"Ankara\",\n  \"destinationCity\": \"Ankara\",\n  \"estimatedDistanceKm\": 1.48,\n  \"actualDistanceKm\": 341.35,\n  \"distanceDifferenceKm\": 339.87,\n  \"estimatedDurationMinutes\": 2,\n  \"actualDurationMinutes\": 285,\n  \"durationDifferenceMinutes\": 283,\n  \"finalAmount\": 3413.5,\n  \"currency\": \"TRY\",\n  \"vehicleStatus\": \"MAINTENANCE\",\n  \"vehicleRemainingRangeKm\": 0,\n  \"completedAt\": \"2026-10-15T17:46:44.8882332\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        },
+        "description": "Yolculuk sırasındaki yaşanan ihlaller ve bozulmaları çekebileceğin endpoint. Hız limiti ihlalleri location gönderilen endpointin içinde sunucuda tespit edilir. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Fault",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"faultType\": \"TIRE\",\r\n  \"description\": \"Sol ön lastikte sorun oluştu\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/trips/8ae71dae-cb9d-4075-a78a-26498f7cc9fb/faults",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "8ae71dae-cb9d-4075-a78a-26498f7cc9fb",
+            "faults"
+          ]
+        },
+        "description": "Araçta yaşanan arızların bildirileceği endpoint. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    },
+    {
+      "name": "Fault",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{Bearer}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8082/trips/8ae71dae-cb9d-4075-a78a-26498f7cc9fb/faults",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "trips",
+            "8ae71dae-cb9d-4075-a78a-26498f7cc9fb",
+            "faults"
+          ]
+        },
+        "description": "Yolculukta yaşanan arızaların listelenmesini sağlayan endpoint. jwt gönderilmeden endpoint isteği kabul etmez."
+      },
+      "response": []
+    }
+  ]
+}

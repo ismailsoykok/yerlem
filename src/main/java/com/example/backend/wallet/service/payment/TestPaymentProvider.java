@@ -11,8 +11,8 @@ public class TestPaymentProvider implements PaymentProvider {
 
     @Override
     public PaymentResult processTopUp(UUID userId, BigDecimal amount) {
-        // Yalnızca geliştirme/test ortamı.
-        // Gerçek para tahsilatı yapılmaz.
+        // burası sadece test ortamı için var
+        // gerçek para çekme falan yok yani
         return new PaymentResult(
                 true,
                 "TEST-" + UUID.randomUUID()

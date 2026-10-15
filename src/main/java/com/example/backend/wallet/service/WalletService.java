@@ -128,14 +128,14 @@ public class WalletService {
             );
         }
 
-        // 1. Kullanıcının cüzdanını kilitle.
+        // önce kullanıcının cüzdanını kilitli çekiyoruz
         Wallet wallet = walletRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Kullanıcının cüzdanı bulunamadı."
                 ));
 
-        // 2. Ödeme sağlayıcısından sonucu al.
+        // ödeme sağlayıcısından gelen sonuca bakıyoruz
         PaymentResult paymentResult =
                 paymentProvider.processTopUp(userId, amount);
 
@@ -149,7 +149,7 @@ public class WalletService {
         String idempotencyKey =
                 "TOP_UP:" + paymentResult.providerReference();
 
-        // 3. Aynı ödeme referansıyla ikinci kez bakiye ekleme.
+        // aynı ödeme referansıyla iki kere bakiye yüklenmesin diye kontrol ediyoruz
         var existingMovement =
                 walletMovementRepository.findByIdempotencyKey(idempotencyKey);
 
@@ -165,13 +165,13 @@ public class WalletService {
             );
         }
 
-        // 4. Bakiyeyi güncelle.
+        // bakiyeyi güncelliyoruz
         BigDecimal newBalance = wallet.getBalance().add(amount);
         wallet.setBalance(newBalance);
 
         walletRepository.save(wallet);
 
-        // 5. Cüzdan hareketi oluştur.
+        // cüzdan hareketini kaydediyoruz
         WalletMovement movement = new WalletMovement();
         movement.setWallet(wallet);
         movement.setMovementType(WalletMovementType.TOP_UP);

@@ -137,7 +137,7 @@ public class UserService {
             );
         }
 
-        // OTP tek kullanımlıktır.
+        // otp tek kullanımlık hemen harcandı diye işaretliyoruz
         otp.setConsumedAt(LocalDateTime.now());
 
         user.setPhoneVerified(true);
@@ -157,7 +157,7 @@ public class UserService {
                         "Telefon numarası veya şifre hatalı."
                 ));
 
-        // Daha önce oluşturulmuş, şifresi olmayan hesaplar.
+        // eskiden açılmış şifresiz hesapları ve şifre uyuşmazlığını kontrol ediyoruz
         if (user.getPasswordHash() == null
                 || !passwordEncoder.matches(
                 request.getPassword(),
@@ -174,7 +174,7 @@ public class UserService {
             );
         }
 
-        // Login sırasında OTP oluşturulmaz.
+        // girişte otp üretmiyoruz direkt token verip geçiyoruz
         return createAuthResponse(user);
     }
 
