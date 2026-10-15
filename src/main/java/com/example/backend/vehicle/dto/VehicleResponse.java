@@ -8,6 +8,7 @@ public class VehicleResponse {
     private UUID id;
     private String make;
     private String model;
+    private String currentCity;
     private BigDecimal remainingRangeKm;
     private BigDecimal currentLatitude;
     private BigDecimal currentLongitude;
@@ -15,15 +16,21 @@ public class VehicleResponse {
     public VehicleResponse(
             UUID id, String make,
             String model,
+            String currentCity,
             BigDecimal remainingRangeKm,
             BigDecimal currentLatitude,
             BigDecimal currentLongitude) {
         this.id = id;
         this.make = make;
         this.model = model;
+        this.currentCity = currentCity;
         this.remainingRangeKm = remainingRangeKm;
         this.currentLatitude = currentLatitude;
         this.currentLongitude = currentLongitude;
+    }
+
+    public String getCurrentCity() {
+        return currentCity;
     }
 
     public UUID getId() {

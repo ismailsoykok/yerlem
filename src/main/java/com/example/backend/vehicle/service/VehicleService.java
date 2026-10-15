@@ -31,6 +31,7 @@ public class VehicleService {
                         vehicle.getId(),
                         vehicle.getMake(),
                         vehicle.getModel(),
+                        vehicle.getCurrentCity(),
                         vehicle.getRemainingRangeKm(),
                         vehicle.getCurrentLatitude(),
                         vehicle.getCurrentLongitude()

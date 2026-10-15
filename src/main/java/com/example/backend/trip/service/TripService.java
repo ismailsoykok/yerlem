@@ -2,7 +2,17 @@
 package com.example.backend.trip.service;
 import com.example.backend.alert.entity.TripAlert;
 import com.example.backend.alert.service.AlertService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.UUID;
 
+import com.example.backend.trip.repository.PostgisTripDistanceRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import com.example.backend.fare.entity.CityFare;
 import com.example.backend.fare.entity.TripFare;
 import com.example.backend.fare.entity.TripFareStatus;
@@ -47,6 +57,7 @@ public class TripService {
     private final VehicleUsageAreaRepository vehicleUsageAreaRepository;
     private final CityFareRepository cityFareRepository;
     private final PostgisDistanceRepository postgisDistanceRepository;
+    private final PostgisTripDistanceRepository  postgisTripDistanceRepository;
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
     private final WalletService walletService;
@@ -58,7 +69,7 @@ public class TripService {
                        VehicleRepository vehicleRepository,
                        VehicleUsageAreaRepository vehicleUsageAreaRepository,
                        CityFareRepository cityFareRepository,
-                       PostgisDistanceRepository postgisDistanceRepository,
+                       PostgisDistanceRepository postgisDistanceRepository, PostgisTripDistanceRepository postgisTripDistanceRepository,
                        CurrentUserService currentUserService,
                        UserRepository userRepository,
                        WalletService walletService,
@@ -70,6 +81,7 @@ public class TripService {
         this.vehicleUsageAreaRepository = vehicleUsageAreaRepository;
         this.cityFareRepository = cityFareRepository;
         this.postgisDistanceRepository = postgisDistanceRepository;
+        this.postgisTripDistanceRepository = postgisTripDistanceRepository;
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.walletService = walletService;
@@ -309,7 +321,7 @@ public class TripService {
 
 
     @Transactional
-    public void saveTripLocation(
+    public Object saveTripLocation(
             UUID tripId,
             TripLocationRequest request) {
 
@@ -383,15 +395,14 @@ public class TripService {
         );
         location.setSpeedKmh(speedKmh);
 
-        tripLocationRepository.save(location);
+        tripLocationRepository.saveAndFlush(location);
 
         // 7. Hız sınırını kontrol et.
         if (speedKmh != null && request.getCityName() != null) {
 
             String cityName = request.getCityName().trim();
 
-            // Başlangıç için: seyahatin başlangıç şehriyle
-            // aynıysa şehir içi kabul ediyoruz.
+            // Başlangıç şehriyle aynıysa şehir içi kabul et.
             boolean inCity = cityName.equalsIgnoreCase(
                     trip.getOriginCity()
             );
@@ -415,9 +426,327 @@ public class TripService {
                 );
             }
         }
+
+        // 8. Kalan menzili kontrol et.
+        BigDecimal actualDistanceKm =
+                postgisTripDistanceRepository
+                        .calculateActualDistanceKm(trip.getId());
+
+        if (actualDistanceKm != null) {
+
+            BigDecimal remainingRangeKm =
+                    trip.getVehicle().getRemainingRangeKm();
+
+            BigDecimal estimatedRemainingRange =
+                    remainingRangeKm.subtract(actualDistanceKm);
+
+            // Kalan menzil 1 km'nin altına düştüyse yolculuğu bitir.
+            if (estimatedRemainingRange.compareTo(BigDecimal.ONE) < 0) {
+
+                TripCompleteRequest completeRequest =
+                        new TripCompleteRequest();
+
+                completeRequest.setLatitude(latitude);
+                completeRequest.setLongitude(longitude);
+                completeRequest.setCityName(request.getCityName());
+                completeRequest.setSpeedKmh(speedKmh);
+
+                return completeTrip(tripId, completeRequest);
+            }
+        }
+        return Map.of("message", "Konum başarıyla kaydedildi.");
     }
 
-    public TripCompleteResponse completeTrip(UUID tripId, @Valid TripCompleteRequest request) {
-        return null;
+
+    @Transactional
+    public TripCompleteResponse completeTrip(
+            UUID tripId,
+            TripCompleteRequest request
+    ) {
+        // 1. İstek ve koordinat kontrolleri
+        if (request == null
+                || request.getLatitude() == null
+                || request.getLongitude() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Son konum bilgisi zorunludur."
+            );
+        }
+
+        if (request.getLatitude().compareTo(BigDecimal.valueOf(-90)) < 0
+                || request.getLatitude().compareTo(BigDecimal.valueOf(90)) > 0
+                || request.getLongitude().compareTo(BigDecimal.valueOf(-180)) < 0
+                || request.getLongitude().compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Geçersiz koordinat bilgisi."
+            );
+        }
+
+        if (request.getSpeedKmh() != null
+                && request.getSpeedKmh().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Hız negatif olamaz."
+            );
+        }
+
+        // 2. JWT üzerinden mevcut kullanıcıyı al
+        UUID userId = currentUserService.getUserId();
+
+        // 3. Seyahati kilitleyerek getir.
+        // Aynı seyahat için eşzamanlı tamamlama isteklerinin
+        // ikinci kez işlem yapmasını engeller.
+        Trip trip = tripRepository.findByIdForUpdate(tripId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Seyahat bulunamadı."
+                ));
+
+        // 4. Seyahatin bu kullanıcıya ait olduğunu doğrula
+        if (!trip.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Bu seyahati tamamlama yetkiniz bulunmuyor."
+            );
+        }
+
+        // 5. Yalnızca devam eden seyahat tamamlanabilir
+        if (trip.getStatus() != TripStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Yalnızca devam eden seyahatler tamamlanabilir."
+            );
+        }
+
+        LocalDateTime completedAt = LocalDateTime.now();
+
+        if (trip.getStartedAt() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Seyahatin başlangıç zamanı bulunamadı."
+            );
+        }
+
+        if (completedAt.isBefore(trip.getStartedAt())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Seyahat bitiş zamanı başlangıç zamanından önce olamaz."
+            );
+        }
+
+        // 6. Son konumu seyahat zaman çizelgesine kaydet
+        TripLocation finalLocation = new TripLocation();
+        finalLocation.setTrip(trip);
+        finalLocation.setLatitude(request.getLatitude());
+        finalLocation.setLongitude(request.getLongitude());
+        finalLocation.setCityName(
+                request.getCityName() == null
+                        ? null
+                        : request.getCityName().trim()
+        );
+        finalLocation.setSpeedKmh(request.getSpeedKmh());
+        finalLocation.setRecordedAt(completedAt);
+
+        tripLocationRepository.saveAndFlush(finalLocation);
+
+        // 7. Hız sınırını kontrol et ve gerekiyorsa uyarı oluştur
+        if (request.getSpeedKmh() != null) {
+            boolean isSameCity = request.getCityName() != null
+                    && trip.getOriginCity() != null
+                    && request.getCityName().trim()
+                    .equalsIgnoreCase(trip.getOriginCity().trim());
+
+            BigDecimal speedLimit = isSameCity
+                    ? BigDecimal.valueOf(80)
+                    : BigDecimal.valueOf(120);
+
+            if (request.getSpeedKmh().compareTo(speedLimit) > 0) {
+                alertService.createAlert(
+                        trip.getId(),
+                        TripAlert.SPEED_LIMIT_EXCEEDED,
+                        isSameCity
+                                ? "Şehir içi hız limiti aşıldı."
+                                : "Şehir dışı hız limiti aşıldı.",
+                        request.getSpeedKmh(),
+                        speedLimit
+                );
+            }
+        }
+
+        // 8. Konum kayıtlarından gerçek mesafeyi hesapla
+        BigDecimal actualDistanceKm =
+                postgisTripDistanceRepository
+                        .calculateActualDistanceKm(trip.getId());
+
+        if (actualDistanceKm == null
+                || actualDistanceKm.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Seyahatin gerçek mesafesi hesaplanamadı."
+            );
+        }
+
+        actualDistanceKm = actualDistanceKm.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+
+        // 9. Gerçek seyahat süresini hesapla
+        long durationMinutes = Duration.between(
+                trip.getStartedAt(),
+                completedAt
+        ).toMinutes();
+
+        int actualDurationMinutes = Math.toIntExact(durationMinutes);
+
+        // 10. Tahmini süreyle gerçekleşen süreyi karşılaştır.
+        // Tolerans: tahmini sürenin %20 fazlası.
+        Integer estimatedDuration = trip.getEstimatedDurationMinutes();
+
+        if (estimatedDuration != null && estimatedDuration > 0) {
+            BigDecimal durationThreshold = BigDecimal
+                    .valueOf(estimatedDuration)
+                    .multiply(BigDecimal.valueOf(1.20))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal actualDuration = BigDecimal.valueOf(
+                    actualDurationMinutes
+            );
+
+            if (actualDuration.compareTo(durationThreshold) > 0) {
+                alertService.createAlert(
+                        trip.getId(),
+                        TripAlert.DURATION_EXCEEDED,
+                        "Seyahat süresi tahmini sürenin %20 üzerindeki "
+                                + "tolerans sınırını aştı.",
+                        actualDuration,
+                        durationThreshold
+                );
+            }
+        }
+
+        // 11. Seyahat ücretini kontrol et
+        TripFare tripFare = tripFareRepository.findByTripId(trip.getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Seyahat ücreti bulunamadı."
+                ));
+
+        if (tripFare.getStatus() != TripFareStatus.ESTIMATED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Seyahat ücreti daha önce işlenmiş veya geçersiz durumda."
+            );
+        }
+
+        if (tripFare.getPricePerKm() == null
+                || tripFare.getPricePerKm().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Kilometre tarifesi geçersiz olduğu için ücret hesaplanamadı."
+            );
+        }
+
+        // 12. Gerçek mesafeye göre nihai ücreti hesapla.
+        // Başlangıçta kaydedilen şehir tarifesi kullanılır.
+        BigDecimal finalAmount = actualDistanceKm
+                .multiply(tripFare.getPricePerKm())
+                .setScale(2, RoundingMode.HALF_UP);
+
+        // Mevcut ücret kaydını güncelle; ikinci bir TripFare oluşturma.
+        tripFare.setDistanceKm(actualDistanceKm);
+        tripFare.setTotalAmount(finalAmount);
+        tripFare.setStatus(TripFareStatus.FINALIZED);
+
+        // 13. Tahsilat yap.
+        // Bu işlem aynı transaction içinde olmalı.
+        // Tahsilat başarısız olursa tamamlanma işlemleri de geri alınır.
+        walletService.chargeTrip(userId, trip, finalAmount);
+
+        // 14. Seyahat özetini güncelle
+        trip.setActualDistanceKm(actualDistanceKm);
+        trip.setActualDurationMinutes(actualDurationMinutes);
+        trip.setCompletedAt(completedAt);
+        trip.setStatus(TripStatus.COMPLETED);
+
+        // 15. Aracın son konumunu ve menzil bilgilerini güncelle
+        Vehicle vehicle = trip.getVehicle();
+
+        vehicle.setCurrentLatitude(request.getLatitude());
+        vehicle.setCurrentLongitude(request.getLongitude());
+        vehicle.setLastLocationAt(completedAt);
+
+        if (request.getCityName() != null
+                && !request.getCityName().isBlank()) {
+            vehicle.setCurrentCity(request.getCityName().trim());
+        }
+
+        // İsteğin doğrultusunda toplam menzil değerini artır.
+        if (vehicle.getTotalRangeKm() != null) {
+            vehicle.setTotalRangeKm(
+                    vehicle.getTotalRangeKm()
+                            .add(actualDistanceKm)
+                            .setScale(2, RoundingMode.HALF_UP)
+            );
+        }
+
+        // Kalan menzili gidilen mesafe kadar azalt.
+        if (vehicle.getRemainingRangeKm() != null) {
+            BigDecimal remainingRange = vehicle.getRemainingRangeKm()
+                    .subtract(actualDistanceKm);
+
+            vehicle.setRemainingRangeKm(
+                    remainingRange.max(BigDecimal.ZERO)
+                            .setScale(2, RoundingMode.HALF_UP)
+            );
+        }
+
+        // Arıza nedeniyle bakımda olan araç bakımda kalmalı.
+        if (vehicle.getStatus() != VehicleStatus.MAINTENANCE) {
+            vehicle.setStatus(VehicleStatus.AVAILABLE);
+        }
+
+        // 16. Değişiklikleri kaydet
+        tripFareRepository.save(tripFare);
+        tripRepository.save(trip);
+        vehicleRepository.save(vehicle);
+
+
+        // 17. İstemciye kapsamlı seyahat özetini döndür
+        TripCompleteResponse response = new TripCompleteResponse();
+
+        response.setTripId(trip.getId());
+        response.setStatus(trip.getStatus());
+
+        response.setOriginCity(trip.getOriginCity());
+        response.setDestinationCity(trip.getDestinationCity());
+
+        response.setEstimatedDistanceKm(trip.getEstimatedDistanceKm());
+        response.setActualDistanceKm(actualDistanceKm);
+        response.setDistanceDifferenceKm(
+                actualDistanceKm.subtract(trip.getEstimatedDistanceKm())
+                        .setScale(2, RoundingMode.HALF_UP)
+        );
+
+        response.setEstimatedDurationMinutes(
+                trip.getEstimatedDurationMinutes()
+        );
+        response.setActualDurationMinutes(actualDurationMinutes);
+        response.setDurationDifferenceMinutes(
+                actualDurationMinutes - trip.getEstimatedDurationMinutes()
+        );
+
+        response.setFinalAmount(finalAmount);
+        response.setCurrency(tripFare.getCurrency());
+
+        response.setVehicleStatus(vehicle.getStatus());
+        response.setVehicleRemainingRangeKm(
+                vehicle.getRemainingRangeKm()
+        );
+
+        response.setCompletedAt(completedAt);
+
+        return response;
     }
 }

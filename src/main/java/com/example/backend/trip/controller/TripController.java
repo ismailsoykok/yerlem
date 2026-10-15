@@ -41,10 +41,12 @@ public class TripController {
     }
 
     @PostMapping("/{tripId}/locations")
-    public void saveTripLocation(
+    public ResponseEntity<?> saveTripLocation(
             @PathVariable UUID tripId,
             @RequestBody TripLocationRequest request) {
-        tripService.saveTripLocation(tripId, request);
+
+        Object response = tripService.saveTripLocation(tripId, request);
+        return ResponseEntity.ok(response);
     }
 
 
