@@ -1,5 +1,5 @@
 
-package com.example.backend.trip.entity;
+package com.example.backend.alert.entity;
 
 public enum TripAlert {
     SPEED_LIMIT_EXCEEDED,

@@ -1,39 +1,81 @@
+
 package com.example.backend.trip.service;
+import com.example.backend.alert.entity.TripAlert;
+import com.example.backend.alert.service.AlertService;
 
 import com.example.backend.fare.entity.CityFare;
+import com.example.backend.fare.entity.TripFare;
+import com.example.backend.fare.entity.TripFareStatus;
 import com.example.backend.fare.repository.CityFareRepository;
-import com.example.backend.trip.dto.TripEstimateRequest;
-import com.example.backend.trip.dto.TripEstimateResponse;
+import com.example.backend.fare.repository.TripFareRepository;
+import com.example.backend.security.CurrentUserService;
+import com.example.backend.trip.dto.*;
+import com.example.backend.trip.entity.Trip;
+import com.example.backend.trip.entity.TripStatus;
 import com.example.backend.trip.repository.PostgisDistanceRepository;
+import com.example.backend.trip.repository.TripRepository;
+import com.example.backend.user.entity.User;
+import com.example.backend.user.entity.UserStatus;
+import com.example.backend.user.repository.UserRepository;
 import com.example.backend.vehicle.entity.Vehicle;
 import com.example.backend.vehicle.entity.VehicleStatus;
 import com.example.backend.vehicle.repository.VehicleRepository;
 import com.example.backend.vehicle.repository.VehicleUsageAreaRepository;
+import com.example.backend.wallet.service.WalletService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.example.backend.trip.dto.TripLocationRequest;
+import com.example.backend.trip.entity.TripLocation;
+import com.example.backend.trip.entity.Trip;
+import com.example.backend.trip.entity.TripStatus;
+import com.example.backend.trip.repository.TripLocationRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
 public class TripService {
 
+    private final TripLocationRepository tripLocationRepository;
     private final VehicleRepository vehicleRepository;
     private final VehicleUsageAreaRepository vehicleUsageAreaRepository;
     private final CityFareRepository cityFareRepository;
     private final PostgisDistanceRepository postgisDistanceRepository;
+    private final CurrentUserService currentUserService;
+    private final UserRepository userRepository;
+    private final WalletService walletService;
+    private final TripRepository tripRepository;
+    private final TripFareRepository tripFareRepository;
+    private final AlertService alertService;
 
-    public TripService(
-            VehicleRepository vehicleRepository,
-            VehicleUsageAreaRepository vehicleUsageAreaRepository,
-            CityFareRepository cityFareRepository,
-            PostgisDistanceRepository postgisDistanceRepository) {
+    public TripService(TripLocationRepository tripLocationRepository,
+                       VehicleRepository vehicleRepository,
+                       VehicleUsageAreaRepository vehicleUsageAreaRepository,
+                       CityFareRepository cityFareRepository,
+                       PostgisDistanceRepository postgisDistanceRepository,
+                       CurrentUserService currentUserService,
+                       UserRepository userRepository,
+                       WalletService walletService,
+                       TripRepository tripRepository,
+                       TripFareRepository tripFareRepository, AlertService alertService) {
+
+        this.tripLocationRepository = tripLocationRepository;
         this.vehicleRepository = vehicleRepository;
         this.vehicleUsageAreaRepository = vehicleUsageAreaRepository;
         this.cityFareRepository = cityFareRepository;
         this.postgisDistanceRepository = postgisDistanceRepository;
+        this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
+        this.walletService = walletService;
+        this.tripRepository = tripRepository;
+        this.tripFareRepository = tripFareRepository;
+        this.alertService = alertService;
     }
 
     public TripEstimateResponse estimateTrip(TripEstimateRequest request) {
@@ -81,7 +123,8 @@ public class TripService {
         if (vehicle.getCurrentLatitude() == null
                 || vehicle.getCurrentLongitude() == null
                 || vehicle.getRemainingRangeKm() == null
-                || vehicle.getRemainingRangeKm().compareTo(BigDecimal.ZERO) <= 0) {
+                || vehicle.getRemainingRangeKm()
+                .compareTo(BigDecimal.ZERO) <= 0) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Aracın konum veya menzil bilgileri geçersiz."
@@ -90,11 +133,12 @@ public class TripService {
 
         String destinationCity = request.getDestinationCity().trim();
 
-        boolean allowedArea = vehicleUsageAreaRepository
-                .existsByVehicleIdAndCityNameIgnoreCase(
-                        vehicleId,
-                        destinationCity
-                );
+        boolean allowedArea =
+                vehicleUsageAreaRepository
+                        .existsByVehicleIdAndCityNameIgnoreCase(
+                                vehicleId,
+                                destinationCity
+                        );
 
         if (!allowedArea) {
             throw new ResponseStatusException(
@@ -110,12 +154,13 @@ public class TripService {
                         "Aracın bulunduğu şehir için aktif ücret tarifesi bulunamadı."
                 ));
 
-        BigDecimal distanceKm = postgisDistanceRepository.calculateDistanceKm(
-                vehicle.getCurrentLongitude(),
-                vehicle.getCurrentLatitude(),
-                longitude,
-                latitude
-        ).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal distanceKm =
+                postgisDistanceRepository.calculateDistanceKm(
+                        vehicle.getCurrentLongitude(),
+                        vehicle.getCurrentLatitude(),
+                        longitude,
+                        latitude
+                ).setScale(2, RoundingMode.HALF_UP);
 
         if (distanceKm.compareTo(vehicle.getRemainingRangeKm()) > 0) {
             throw new ResponseStatusException(
@@ -124,8 +169,6 @@ public class TripService {
             );
         }
 
-
-        // Ortalama 50 km/saat varsayımıyla tahmini süre.
         int durationMinutes = distanceKm
                 .divide(BigDecimal.valueOf(50), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(60))
@@ -143,5 +186,238 @@ public class TripService {
                 estimatedFee,
                 cityFare.getCurrency()
         );
+    }
+
+    @Transactional
+    public TripCreateResponse createTrip(TripCreateRequest request) {
+
+        if (request == null || request.getVehicleId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Araç bilgisi zorunludur."
+            );
+        }
+
+        // 1. Giriş yapmış kullanıcıyı bul.
+        UUID userId = currentUserService.getUserId();
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Kullanıcı bulunamadı."
+                ));
+
+        // 2. Kullanıcının aktif ve telefonunun doğrulanmış olduğunu kontrol et.
+        if (user.getStatus() != UserStatus.ACTIVE
+                || !user.isPhoneVerified()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Seyahat başlatmak için hesabınız aktif ve telefonunuz doğrulanmış olmalıdır."
+            );
+        }
+
+        // 3. Aracı kilitli şekilde getir.
+        Vehicle vehicle = vehicleRepository
+                .findByIdForUpdate(request.getVehicleId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Araç bulunamadı."
+                ));
+
+        if (vehicle.getStatus() != VehicleStatus.AVAILABLE) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Araç başka bir seyahatte veya kullanıma kapalı."
+            );
+        }
+
+        // 4. Ücreti istemciden kabul etme; sunucuda yeniden hesapla.
+        TripEstimateRequest estimateRequest = new TripEstimateRequest();
+        estimateRequest.setVehicleId(request.getVehicleId());
+        estimateRequest.setDestinationCity(request.getDestinationCity());
+        estimateRequest.setDestinationLatitude(
+                request.getDestinationLatitude()
+        );
+        estimateRequest.setDestinationLongitude(
+                request.getDestinationLongitude()
+        );
+
+        TripEstimateResponse estimate = estimateTrip(estimateRequest);
+
+        // 5. Tahmini ücret kadar bakiye olup olmadığını kontrol et.
+
+        walletService.checkSufficientBalance(
+                userId,
+                estimate.getEstimatedFee()
+        );
+
+        CityFare cityFare = cityFareRepository
+                .findByCityNameAndActiveTrue(vehicle.getCurrentCity())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Aktif ücret tarifesi bulunamadı."
+                ));
+
+        // 6. Seyahat kaydını oluştur.
+        LocalDateTime startedAt = LocalDateTime.now();
+
+        Trip trip = new Trip();
+        trip.setUser(user);
+        trip.setVehicle(vehicle);
+        trip.setOriginCity(vehicle.getCurrentCity());
+        trip.setOriginLatitude(vehicle.getCurrentLatitude());
+        trip.setOriginLongitude(vehicle.getCurrentLongitude());
+        trip.setDestinationCity(request.getDestinationCity().trim());
+        trip.setDestinationLatitude(request.getDestinationLatitude());
+        trip.setDestinationLongitude(request.getDestinationLongitude());
+        trip.setStatus(TripStatus.IN_PROGRESS);
+        trip.setEstimatedDistanceKm(estimate.getDistanceKm());
+        trip.setEstimatedDurationMinutes(
+                estimate.getEstimatedDurationMinutes()
+        );
+        trip.setStartedAt(startedAt);
+
+        trip = tripRepository.save(trip);
+
+        // 7. Seyahatin ücret hesaplamasını ayrı tabloda sakla.
+        TripFare tripFare = new TripFare();
+        tripFare.setTrip(trip);
+        tripFare.setCityFare(cityFare);
+        tripFare.setDistanceKm(estimate.getDistanceKm());
+        tripFare.setPricePerKm(estimate.getPricePerKm());
+        tripFare.setTotalAmount(estimate.getEstimatedFee());
+        tripFare.setCurrency(estimate.getCurrency());
+        tripFare.setStatus(TripFareStatus.ESTIMATED);
+
+        tripFareRepository.save(tripFare);
+
+        // 8. Aracı kullanımda olarak işaretle.
+        vehicle.setStatus(VehicleStatus.IN_USE);
+        vehicleRepository.save(vehicle);
+
+        // 9. İstemciye seyahat bilgisini döndür.
+        return new TripCreateResponse(
+                trip.getId(),
+                trip.getStatus().name(),
+                estimate.getDistanceKm(),
+                estimate.getEstimatedDurationMinutes(),
+                estimate.getEstimatedFee(),
+                estimate.getCurrency(),
+                startedAt
+        );
+    }
+
+
+    @Transactional
+    public void saveTripLocation(
+            UUID tripId,
+            TripLocationRequest request) {
+
+        // 1. İstek ve koordinatları doğrula.
+        if (request == null
+                || request.getLatitude() == null
+                || request.getLongitude() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Konum koordinatları zorunludur."
+            );
+        }
+
+        BigDecimal latitude = request.getLatitude();
+        BigDecimal longitude = request.getLongitude();
+        BigDecimal speedKmh = request.getSpeedKmh();
+
+        if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0
+                || latitude.compareTo(BigDecimal.valueOf(90)) > 0
+                || longitude.compareTo(BigDecimal.valueOf(-180)) < 0
+                || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Konum koordinatları geçersiz."
+            );
+        }
+
+        if (speedKmh != null
+                && speedKmh.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Hız negatif olamaz."
+            );
+        }
+
+        // 2. Giriş yapan kullanıcıyı belirle.
+        UUID userId = currentUserService.getUserId();
+
+        // 3. Seyahati bul.
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Seyahat bulunamadı."
+                ));
+
+        // 4. Seyahatin kullanıcıya ait olduğunu kontrol et.
+        if (!trip.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Bu seyahate konum gönderme yetkiniz yok."
+            );
+        }
+
+        // 5. Seyahatin devam ettiğini kontrol et.
+        if (trip.getStatus() != TripStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Yalnızca devam eden seyahatlere konum eklenebilir."
+            );
+        }
+
+        // 6. Konumu kaydet.
+        TripLocation location = new TripLocation();
+        location.setTrip(trip);
+        location.setLatitude(latitude);
+        location.setLongitude(longitude);
+        location.setCityName(
+                request.getCityName() == null
+                        ? null
+                        : request.getCityName().trim()
+        );
+        location.setSpeedKmh(speedKmh);
+
+        tripLocationRepository.save(location);
+
+        // 7. Hız sınırını kontrol et.
+        if (speedKmh != null && request.getCityName() != null) {
+
+            String cityName = request.getCityName().trim();
+
+            // Başlangıç için: seyahatin başlangıç şehriyle
+            // aynıysa şehir içi kabul ediyoruz.
+            boolean inCity = cityName.equalsIgnoreCase(
+                    trip.getOriginCity()
+            );
+
+            BigDecimal speedLimit = inCity
+                    ? BigDecimal.valueOf(80)
+                    : BigDecimal.valueOf(120);
+
+            if (speedKmh.compareTo(speedLimit) > 0) {
+
+                String message = inCity
+                        ? "Şehir içi hız sınırı olan 80 km/sa aşıldı."
+                        : "Şehir dışı hız sınırı olan 120 km/sa aşıldı.";
+
+                alertService.createAlert(
+                        tripId,
+                        TripAlert.SPEED_LIMIT_EXCEEDED,
+                        message,
+                        speedKmh,
+                        speedLimit
+                );
+            }
+        }
+    }
+
+    public TripCompleteResponse completeTrip(UUID tripId, @Valid TripCompleteRequest request) {
+        return null;
     }
 }
